@@ -59,7 +59,7 @@ export default function LandingPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", position: "relative", overflowX: "clip", width: "100%" }}>
+    <div style={{ minHeight: "100dvh", position: "relative", overflowX: "clip", width: "100%", backgroundColor: "transparent" }}>
       {/* 3D Scroll-Driven Mountain Hyperlapse Canvas */}
       <ScrollCanvasBackground themeMode={themeMode} onTransitionChange={setIsTransitioning} />
 

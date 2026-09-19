@@ -111,10 +111,17 @@ export function ScrollCanvasBackground({
 
     const handleResize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
-      canvas.style.width = `${window.innerWidth}px`;
-      canvas.style.height = `${window.innerHeight}px`;
+      const w = window.innerWidth;
+      const h = Math.max(
+        window.innerHeight,
+        document.documentElement.clientHeight || 0,
+        (typeof screen !== "undefined" ? screen.height : 0) || 0
+      );
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      canvas.style.width = "100%";
+      canvas.style.height = "100%";
+      ctx.resetTransform?.();
       ctx.scale(dpr, dpr);
     };
 
@@ -151,8 +158,9 @@ export function ScrollCanvasBackground({
         document.documentElement.removeAttribute("data-theme");
       }
 
-      const width = window.innerWidth;
-      const height = window.innerHeight;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = canvas.width / dpr || window.innerWidth;
+      const height = canvas.height / dpr || window.innerHeight;
 
       // nightFactor interpolates 0.0 (day) to 1.0 (aurora)
       const nightFactor = s.currentProgress;
@@ -236,46 +244,96 @@ export function ScrollCanvasBackground({
           ctx.restore();
         }
 
-        // Shimmering Aurora Borealis Waves (sweeps in from 0.55 onward)
+        // Shimmering Aurora Borealis Waves (centralized, symmetrical ribbons across mobile & desktop)
         if (nightFactor > 0.5) {
           const auroraIntensity = Math.min((nightFactor - 0.5) / 0.5, 1);
-          const auroraAlpha = auroraIntensity * 0.36;
+          const auroraAlpha = auroraIntensity * 0.44;
 
           ctx.save();
           ctx.globalCompositeOperation = "screen";
 
           for (let layer = 0; layer < 2; layer++) {
-            const grad = ctx.createLinearGradient(0, height * 0.04, 0, height * 0.58);
-            if (layer === 0) {
+            const isEmerald = layer === 0;
+            const baseY = height * (0.20 + layer * 0.08);
+
+            const topPoints: { x: number; y: number }[] = [];
+            const botPoints: { x: number; y: number }[] = [];
+            const midPoints: { x: number; y: number }[] = [];
+
+            // Adaptive step size based on viewport width (smooth curve on mobile and desktop)
+            const step = Math.max(8, Math.round(width / 44));
+
+            for (let x = 0; x <= width; x += step) {
+              const normX = x / width; // 0.0 at left, 0.5 at center, 1.0 at right
+
+              // Symmetrical center envelope: peaks at center (normX = 0.5), tapers softly to 0 at edges
+              const envelope = Math.pow(Math.sin(normX * Math.PI), 0.82);
+
+              // Wave angles centered around the horizontal center (normX - 0.5)
+              const waveAngle1 = (normX - 0.5) * Math.PI * 2.8 + auroraTick * (1 + layer * 0.3) + layer * 1.6;
+              const waveAngle2 = (normX - 0.5) * Math.PI * 1.6 - auroraTick * 0.65;
+
+              // Graceful undulating displacement centered in the viewport
+              const wave = (Math.sin(waveAngle1) * 26 + Math.cos(waveAngle2) * 14) * envelope;
+              const centerY = baseY + wave;
+
+              // Ribbon thickness that organically blossoms in the center and pinches to zero at edges
+              const thickness = (height * 0.08 + Math.sin((normX - 0.5) * Math.PI * 3 + auroraTick) * 10) * envelope;
+
+              const yTop = centerY - thickness * 0.5;
+              const yBot = centerY + thickness * 0.65;
+
+              topPoints.push({ x, y: yTop });
+              botPoints.push({ x, y: yBot });
+              midPoints.push({ x, y: centerY });
+            }
+
+            // Ensure last point hits width precisely
+            if (topPoints[topPoints.length - 1].x < width) {
+              topPoints.push({ x: width, y: baseY });
+              botPoints.push({ x: width, y: baseY });
+              midPoints.push({ x: width, y: baseY });
+            }
+
+            // 1. Draw glowing ethereal veil
+            const grad = ctx.createLinearGradient(0, baseY - height * 0.1, 0, baseY + height * 0.14);
+            if (isEmerald) {
               grad.addColorStop(0, "rgba(52, 211, 153, 0)");
-              grad.addColorStop(0.38, `rgba(52, 211, 153, ${auroraAlpha.toFixed(2)})`);
-              grad.addColorStop(0.72, `rgba(16, 185, 129, ${(auroraAlpha * 0.75).toFixed(2)})`);
+              grad.addColorStop(0.35, `rgba(52, 211, 153, ${(auroraAlpha * 0.85).toFixed(2)})`);
+              grad.addColorStop(0.7, `rgba(16, 185, 129, ${(auroraAlpha * 0.5).toFixed(2)})`);
               grad.addColorStop(1, "rgba(16, 185, 129, 0)");
             } else {
               grad.addColorStop(0, "rgba(139, 92, 246, 0)");
-              grad.addColorStop(0.42, `rgba(139, 92, 246, ${(auroraAlpha * 0.65).toFixed(2)})`);
-              grad.addColorStop(0.8, `rgba(99, 102, 241, ${(auroraAlpha * 0.45).toFixed(2)})`);
+              grad.addColorStop(0.4, `rgba(139, 92, 246, ${(auroraAlpha * 0.75).toFixed(2)})`);
+              grad.addColorStop(0.75, `rgba(99, 102, 241, ${(auroraAlpha * 0.4).toFixed(2)})`);
               grad.addColorStop(1, "rgba(99, 102, 241, 0)");
             }
 
             ctx.fillStyle = grad;
             ctx.beginPath();
-            ctx.moveTo(0, height * 0.28);
-
-            for (let x = 0; x <= width; x += 35) {
-              const freq = 0.0022 + layer * 0.001;
-              const y =
-                height * 0.2 +
-                Math.sin(x * freq + auroraTick + layer * 1.5) * 50 +
-                Math.cos(x * 0.0016 - auroraTick * 0.75) * 32;
-              ctx.lineTo(x, y);
+            ctx.moveTo(topPoints[0].x, topPoints[0].y);
+            for (let i = 1; i < topPoints.length; i++) {
+              ctx.lineTo(topPoints[i].x, topPoints[i].y);
             }
-
-            ctx.lineTo(width, height * 0.62);
-            ctx.lineTo(0, height * 0.62);
+            for (let i = botPoints.length - 1; i >= 0; i--) {
+              ctx.lineTo(botPoints[i].x, botPoints[i].y);
+            }
             ctx.closePath();
             ctx.fill();
+
+            // 2. Delicate luminous filament stroke through the center
+            ctx.beginPath();
+            ctx.moveTo(midPoints[0].x, midPoints[0].y);
+            for (let i = 1; i < midPoints.length; i++) {
+              ctx.lineTo(midPoints[i].x, midPoints[i].y);
+            }
+            ctx.strokeStyle = isEmerald
+              ? `rgba(110, 231, 183, ${(auroraAlpha * 0.9).toFixed(2)})`
+              : `rgba(196, 181, 253, ${(auroraAlpha * 0.8).toFixed(2)})`;
+            ctx.lineWidth = 1.6;
+            ctx.stroke();
           }
+
           ctx.restore();
         }
 
@@ -315,13 +373,18 @@ export function ScrollCanvasBackground({
   return (
     <canvas
       ref={canvasRef}
+      className="bg-canvas-fixed"
       aria-hidden="true"
       style={{
         position: "fixed",
+        inset: 0,
         top: 0,
         left: 0,
-        width: "100vw",
-        height: "100vh",
+        right: 0,
+        bottom: 0,
+        width: "100%",
+        height: "100%",
+        minHeight: "100dvh",
         pointerEvents: "none",
         zIndex: 0,
       }}
